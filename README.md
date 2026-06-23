@@ -15,16 +15,22 @@ layer evaluated against this frozen baseline.
 
 | Metric | Value |
 |---|---|
-| Disposition accuracy | 76.67 % |
-| Weighted false-clear rate — primary | 21.19 % |
+| Disposition accuracy | 75.56 % |
+| Weighted false-clear rate — primary | 22.52 % |
 | Sanctions precision | 100.0 % |
 | Sanctions recall | 100.0 % |
-| Latency p50 | 35.1 ms |
-| Latency p95 | 67.5 ms |
+| Latency p50 | ~51 ms |
+| Latency p95 | ~57 ms |
 | Total LLM cost | $0.00 |
 
 > Latency measured on a 2024 MacBook Pro M3. Accuracy and precision/recall are
-> hardware-independent.
+> hardware-independent. All disposition counts and metrics are **fully
+> deterministic** — identical results on every run.
+
+**Sanctions screening is saturated** at 100 % precision and recall across the
+15 true-positive and 15 hard-negative eval cases. Future accuracy gains are
+expected to come from conflict-resolution and typology cases (the remaining 60
+eval cases), not from further tuning of the sanctions matcher.
 
 ---
 
@@ -37,13 +43,39 @@ layer evaluated against this frozen baseline.
 | 2 | `step2_sanctions` | OFAC SDN/Consolidated parse + fuzzy-name screening (Jaro-Winkler + token sort) |
 | 3 | `step3_entity` | Transaction-graph traversal → hop-1 / hop-2 counterparty chain |
 | 4 | `step4_rules` | Eight typology rules (structuring, passthrough, fan-out, cycle, …) |
-| 5 | `step5_anomaly` | IsolationForest anomaly scoring; explicit feature-leakage exclusion |
+| 5 | `step5_anomaly` | Deterministic robust-z anomaly scoring; explicit feature-leakage exclusion |
 | 6 | `step6_eval` | Assemble frozen 90-case eval set across five case types (write-once) |
 | 7 | `step7_runner` | Fixed-precedence decision table + baseline CLI runner |
 | 8 | `step8_metrics` | Read-only metric computation; freeze `metrics_baseline.json` |
 
 See [`docs/architecture.md`](docs/architecture.md) for detailed module descriptions,
 data-flow diagram, and Pydantic schema overview.
+
+### Fully Deterministic Baseline
+
+Every component of the Phase 1 pipeline is deterministic:
+
+- **Step 1** — Faker names assigned from a committed seed (`FAKER_SEED=42`).
+- **Steps 2–4** — Rule evaluation is purely threshold-based; OFAC fuzzy matching
+  uses a fixed algorithm (Jaro-Winkler + token sort ratio).
+- **Step 5** — Robust-z anomaly scoring uses median and MAD statistics computed
+  from the population. No random state, no bootstrap, no model fitting.
+  `score_accounts()` produces bitwise-identical output on every call.
+- **Steps 6–8** — Eval set is frozen; decision table is immutable; metrics are
+  a pure function of results and gold labels.
+
+The only hardware-dependent value is wall-clock latency.  Disposition counts,
+accuracy, and precision/recall are identical across machines and runs.
+
+### Phase Roadmap
+
+| Phase | Description |
+|---|---|
+| **1 (current)** | Deterministic AML baseline: sanctions screening, entity resolution, rule engine, robust-z anomaly scoring, fixed-precedence decision table |
+| **2** | LangGraph agent: conflict resolution, typology interpretation, human-in-the-loop review, SAR narrative generation |
+| **3** | Framework comparison: LangGraph vs CrewAI vs OpenAI Agents SDK |
+| **4** | LLM evaluation against the frozen Phase 1 baseline |
+| **5** | Deployment and production architecture |
 
 ---
 

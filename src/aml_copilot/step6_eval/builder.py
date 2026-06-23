@@ -26,7 +26,7 @@ from aml_copilot.step0_scaffold.data_loader import derive_accounts, load_transac
 from aml_copilot.step3_entity.resolve import parse_patterns_file
 from aml_copilot.step4_rules.engine import build_account_window, evaluate_rules
 from aml_copilot.step5_anomaly.features import build_feature_matrix
-from aml_copilot.step5_anomaly.scorer import fit_model, score_accounts
+from aml_copilot.step5_anomaly.scorer import score_accounts
 from aml_copilot.utils.checksum import append_checksum, compute_sha256, verify_checksums
 
 logger = logging.getLogger(__name__)
@@ -493,12 +493,11 @@ def build_eval_set(
     patterns = parse_patterns_file(str(patterns_path))
     logger.info("[Step 6] %d typologies in pattern file.", len(patterns))
 
-    # ── Step 5: fit IsolationForest on full account population ────────────────
-    logger.info("[Step 6] Building feature matrix + fitting IsolationForest…")
+    # ── Step 5: robust-z anomaly scoring ─────────────────────────────────────
+    logger.info("[Step 6] Building feature matrix + computing robust-z anomaly scores…")
     accounts_df = derive_accounts(df)
     feat_df = build_feature_matrix(df, accounts_df)
-    model = fit_model(feat_df)
-    all_scores = score_accounts(feat_df, model)
+    all_scores = score_accounts(feat_df)
     score_map: dict[str, AnomalyScore] = {s.account_id: s for s in all_scores}
     n_flagged = sum(1 for s in all_scores if s.is_flagged)
     logger.info("[Step 6] %d / %d accounts flagged.", n_flagged, len(all_scores))

@@ -10,7 +10,7 @@ Startup (once, not timed per case):
   1. verify_checksums  — abort on any frozen-file mismatch
   2. load_transactions + build graph / overlay / pattern_map  (Step 0 / Step 3)
   3. load_ofac_records + build_ofac_index  (Step 2)
-  4. build_feature_matrix + fit_model + score_accounts → score_map  (Step 5)
+  4. build_feature_matrix + score_accounts → score_map  (Step 5 robust-z)
   5. read eval.jsonl → list[EvalCase]
 
 Per case (90 iterations, each timed with perf_counter):
@@ -53,7 +53,7 @@ from aml_copilot.step3_entity.resolve import (
 )
 from aml_copilot.step4_rules.engine import build_account_window, evaluate_rules
 from aml_copilot.step5_anomaly.features import build_feature_matrix
-from aml_copilot.step5_anomaly.scorer import fit_model, score_accounts
+from aml_copilot.step5_anomaly.scorer import score_accounts
 from aml_copilot.step7_runner.decision import apply_decision_table
 from aml_copilot.utils.checksum import verify_checksums
 
@@ -154,9 +154,8 @@ def run(
     accounts_df = derive_accounts(df)
     feat_df = build_feature_matrix(df, accounts_df)
 
-    logger.info("[Step 7] Fitting IsolationForest…")
-    model = fit_model(feat_df)
-    all_scores = score_accounts(feat_df, model)
+    logger.info("[Step 7] Computing robust-z anomaly scores…")
+    all_scores = score_accounts(feat_df)
     score_map = {s.account_id: s for s in all_scores}
     n_flagged = sum(1 for s in all_scores if s.is_flagged)
     logger.info("[Step 7] %d / %d accounts flagged.", n_flagged, len(score_map))

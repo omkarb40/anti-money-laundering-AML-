@@ -3,8 +3,9 @@
 This document describes how to reproduce the full baseline — from a fresh clone
 with raw data to a verified `metrics_baseline.json` — in eight steps.
 
-Expected wall-clock time on a modern laptop: **45–90 minutes** (dominated by
-IsolationForest training over 515 K accounts in Step 7).
+Expected wall-clock time on a modern laptop: **10–20 minutes** (dominated by
+OFAC fuzzy screening over 515 K accounts in Step 7; Step 5 robust-z scoring
+completes in ~2 seconds).
 
 ---
 
@@ -14,7 +15,7 @@ IsolationForest training over 515 K accounts in Step 7).
 |---|---|---|
 | Python | ≥ 3.11 | 3.12 also tested |
 | pip | latest | `pip install --upgrade pip` |
-| ~4 GB free RAM | — | IsolationForest feature matrix |
+| ~2 GB free RAM | — | Feature matrix (float32, 515 K × 15 features) + transaction graph |
 | ~2 GB disk (raw data) | — | HI-Small CSV + OFAC XML |
 
 ---
@@ -134,15 +135,16 @@ Expected output:
 ```
 ================================================================
 results.jsonl: artifacts/results.jsonl  (90 cases)
-  Dispositions:   {'CLEAR': 42, 'ESCALATE': 48}
-  Reasons:        {'anomaly_plus_elevated_rule': 1, 'clear': 42, 'sanctions_or_critical_rule': 47}
-  Latency p50:    ~35 ms
-  Latency p95:    ~68 ms
+  Dispositions:   {'CLEAR': 43, 'ESCALATE': 47}
+  Reasons:        {'clear': 43, 'sanctions_or_critical_rule': 47}
+  Latency p50:    ~51 ms
+  Latency p95:    ~57 ms
 ================================================================
 ```
 
-> Disposition counts are deterministic (same eval set + same decision table).
-> Latency values are hardware-dependent.
+> Disposition counts are **fully deterministic** — identical across machines and
+> runs (robust-z anomaly scoring has no random state). Latency values are
+> hardware-dependent.
 
 ---
 
@@ -163,12 +165,12 @@ and exits without modifying anything:
 
 Expected metrics:
 ```
-Disposition accuracy:       0.766667
-False-clear rate (wtd):     0.211921   ← PRIMARY
+Disposition accuracy:       0.755556
+False-clear rate (wtd):     0.225166   ← PRIMARY
 Sanctions precision:        1.000000
 Sanctions recall:           1.000000
-Latency p50:                ~35 ms     (hardware-dependent)
-Latency p95:                ~68 ms     (hardware-dependent)
+Latency p50:                ~51 ms     (hardware-dependent)
+Latency p95:                ~57 ms     (hardware-dependent)
 Total cost:                 $0.00
 ```
 
@@ -243,4 +245,4 @@ package root at runtime.
 | `Checksum mismatch for …/thresholds.py` | Thresholds were edited | Restore from git: `git checkout -- src/aml_copilot/step4_rules/thresholds.py` |
 | `Expected 5078345 rows, got N` | Wrong dataset (HI-Medium) | Re-download HI-Small specifically |
 | `OFAC index has 0 entries` | XML schema version mismatch | Verify the XML file is `sdn_advanced.xml` (not `sdn.csv`) |
-| OOM during IsolationForest fit | <4 GB free RAM | Close other applications; Step 5 uses float32 feature matrix (~1–2 GB) |
+| OOM during Step 7 | <2 GB free RAM | Close other applications; Step 5 uses float32 feature matrix (~350 MB); transaction graph is the main consumer |

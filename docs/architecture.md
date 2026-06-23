@@ -52,7 +52,7 @@ HI-Small_Trans.csv          OFAC SDN/Consolidated XML
 | `step2_sanctions` | OFAC index + fuzzy matching | Transaction data |
 | `step3_entity` | Graph traversal, counterparty chain | Scoring or disposition |
 | `step4_rules` | Deterministic threshold evaluation | Anomaly model, OFAC |
-| `step5_anomaly` | Unsupervised feature + score | Rule thresholds, labels |
+| `step5_anomaly` | Deterministic feature + robust-z score | Rule thresholds, labels |
 | `step6_eval` | Eval set assembly (write-once) | Pipeline execution |
 | `step7_runner` | Orchestration + decision table | Metric computation |
 | `step8_metrics` | Read-only metric computation | Any data mutation |
@@ -169,8 +169,22 @@ eval performance.
 
 ### Step 5 — Anomaly Score
 
-Trains an `sklearn.ensemble.IsolationForest` (contamination=0.005) on the full
-515 K-account feature matrix.  The model is unsupervised — no labels are used.
+Computes a **deterministic robust-z composite score** for every account using
+the full 515 K-account feature matrix.  No model is trained; no random state is
+involved.
+
+**Algorithm** (per account, per feature `j`):
+
+```
+median_j  = median(X[:, j])
+MAD_j     = median(|X[:, j] − median_j|)
+scale_j   = 1.4826 × MAD_j   [fallback: std_j + ε when MAD_j = 0]
+z_j       = clip(|x_j − median_j| / scale_j, 0, 25)
+composite = mean(z_0, …, z_P)          [higher = more anomalous]
+```
+
+The `is_flagged` boolean is set when `percentile ≥ ANOMALY_FLAGGING_PERCENTILE`
+(top 0.5 % by default).
 
 **Permitted features (non-leaky):**
 - Transaction count per 7-day and 30-day window
@@ -184,8 +198,9 @@ Trains an `sklearn.ensemble.IsolationForest` (contamination=0.005) on the full
 generation logic): running balance delta, cumulative net flow.  Every run logs
 the exclusion list to `AnomalyScore.excluded_features`.
 
-**Key output:** `AnomalyScore` per account — IsolationForest `decision_function`
-output (not a probability), plus `is_flagged` boolean and percentile rank.
+**Key output:** `AnomalyScore` per account — robust-z composite score (higher =
+more anomalous), rank-based percentile [0.0, 1.0], and `is_flagged` boolean.
+Output is bitwise-identical across runs.
 
 ---
 
@@ -286,6 +301,6 @@ Any digest mismatch or missing file aborts with a non-zero exit code.
 | [rapidfuzz](https://github.com/maxbachmann/RapidFuzz) | Jaro-Winkler + `token_sort_ratio` (C extension) |
 | [Faker](https://faker.readthedocs.io) | Seeded synthetic name generation |
 | [Pydantic v2](https://docs.pydantic.dev) | Schema validation and JSON serialization |
-| [scikit-learn](https://scikit-learn.org) | `IsolationForest` anomaly detection |
+| [NumPy](https://numpy.org) | Robust-z anomaly scoring (median, MAD, ranking) |
 | [lxml](https://lxml.de) | OFAC XML parsing |
 | [pytest](https://pytest.org) | Unit and integration tests |
