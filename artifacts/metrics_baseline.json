@@ -1,0 +1,11 @@
+{
+  "disposition_accuracy": 0.7666666666666667,
+  "false_clear_rate_weighted": 0.2119205298013245,
+  "sanctions_precision": 1.0,
+  "sanctions_recall": 1.0,
+  "latency_p50_ms": 35.12285399483517,
+  "latency_p95_ms": 67.48411874577869,
+  "total_cost_usd": 0.0,
+  "eval_size": 90,
+  "generated_at": "2026-06-23T01:55:24.363988Z"
+}

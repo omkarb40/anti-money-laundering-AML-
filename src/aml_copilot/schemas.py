@@ -39,11 +39,12 @@ class GroundTruthRow(BaseModel):
 
 class SanctionsHit(BaseModel):
     account_id: str
-    candidate_name: str
+    assigned_name: str  # internal evidence only — never logged/printed
     ofac_uid: str
-    list_name: str  # "SDN" | "Consolidated"
-    score: float
-    match_type: Literal["exact", "transliteration", "typo_ocr", "partial_reorder"]
+    list_source: Literal["SDN", "Consolidated"]
+    match_score: float  # max(jaro_winkler, token_sort_ratio / 100)
+    scorer_used: Literal["exact", "jaro_winkler", "token_sort_ratio"]
+    matched_name_type: Literal["canonical", "alias"]
 
 
 class EntityChain(BaseModel):
@@ -85,6 +86,8 @@ class EvalCase(BaseModel):
         "typology",
     ]
     typology: Optional[str] = None
+    severity_band: Optional[Literal[1, 2, 3]] = None  # set for ibm_labeled cases
+    conflict_type: Optional[Literal["rule_no_anomaly", "anomaly_no_rule", "rule3_no_anomaly"]] = None
     relevant_txn_ids: list[str]
     notes: str
 

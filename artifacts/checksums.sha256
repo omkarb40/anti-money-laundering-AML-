@@ -1,0 +1,13 @@
+# SHA-256 checksums for frozen artifacts.
+# Format: <hex_digest>  <repo-relative path>
+# Populated by utils/checksum.py at the end of each freeze step.
+# Verified by run_baseline.py before any pipeline execution.
+#
+# Step 1: data/fixtures/ground_truth_matches.csv
+# Step 4: src/aml_copilot/step4_rules/thresholds.py
+# Step 6: data/fixtures/eval.jsonl
+# Step 8: artifacts/metrics_baseline.json
+6842c70d33790cfa8a6f6ae128547185920b7d42e19caf84d2183c2d7e2cc04c  data/fixtures/ground_truth_matches.csv
+c26895aeca9191d087557f6393e308ce57def1c74f400dc647ab0eb880c1f0f4  src/aml_copilot/step4_rules/thresholds.py
+9799c71689fcfccb0822d35472cfc2c515966357cbc764ff4497a2a54efd35a8  data/fixtures/eval.jsonl
+28a22aa97e1bee26c02612e598ee3f4d9e28d9de1c1f97f1c389f910f0fabf85  artifacts/metrics_baseline.json

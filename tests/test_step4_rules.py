@@ -613,8 +613,9 @@ class TestThresholds:
         assert checksum_file.exists(), (
             f"checksums.sha256 not found at {checksum_file}"
         )
+        from aml_copilot.utils.checksum import _to_key
         current_digest = compute_sha256(thresholds_file)
-        key = str(thresholds_file)
+        key = _to_key(thresholds_file)
 
         for line in checksum_file.read_text().splitlines():
             line = line.strip()

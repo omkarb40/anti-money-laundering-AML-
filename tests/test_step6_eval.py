@@ -74,8 +74,9 @@ def test_eval_checksum_matches() -> None:
     """SHA-256 of eval.jsonl matches the entry recorded in checksums.sha256."""
     assert _CHECKSUM_PATH.exists(), f"Checksum file not found: {_CHECKSUM_PATH}"
 
+    from aml_copilot.utils.checksum import _to_key
     actual = _compute_sha256(_EVAL_PATH)
-    eval_key = str(_EVAL_PATH)
+    eval_key = _to_key(_EVAL_PATH)
 
     recorded: str | None = None
     for line in _CHECKSUM_PATH.read_text(encoding="utf-8").splitlines():

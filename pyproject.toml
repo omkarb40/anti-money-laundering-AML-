@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aml-copilot"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "polars>=0.20",
+    "rapidfuzz>=3.0",
+    "faker>=20.0",
+    "pydantic>=2.0",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+    "lxml>=5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+run-baseline = "aml_copilot.step7_runner.run_baseline:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aml_copilot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+    "integration: tests that require HI-Small data files on disk (deselect with -m 'not integration')",
+]
+
+[tool.coverage.run]
+source = ["src/aml_copilot"]
+omit = ["tests/*"]

@@ -1,0 +1,33 @@
+# ── Raw and processed data (too large / not redistributable) ─────────────────
+data/raw/
+data/processed/
+
+# ── Generated pipeline outputs (reproducible from source + raw data) ──────────
+artifacts/results.jsonl
+
+# ── Claude Code local settings (machine-specific, not project docs) ───────────
+CLAUDE.md
+.claude/
+
+# ── macOS system files ────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ── Python build artifacts ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+
+# ── Environment (contains local paths and secrets) ────────────────────────────
+.env
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Scratch / throwaway test files ────────────────────────────────────────────
+tests/zzz_test_tmp.py
