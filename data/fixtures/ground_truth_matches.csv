@@ -1,0 +1,51 @@
+row_id,account_id,assigned_name,ofac_uid,ofac_canonical_name,match_flavor,expected_score_min,expected_score_max,gold_is_match
+0,80027A150,Suniga Rodriguez Jose Juan SUNIGA RODRIGUEZ Jose Juan,26788,Suniga Rodriguez Jose Juan SUÑIGA RODRÍGUEZ Jose Juan,exact,1.0,1.0,True
+1,800864AB0,BERNAL MARTINEZ Manuel Gregorio BERNAL MARTINEZ Manuel Gregorio,17816,BERNAL MARTINEZ Manuel Gregorio BERNAL MARTÍNEZ Manuel Gregorio,exact,1.0,1.0,True
+2,8008DF730,Guzel Faruk Guzel Faruk,47149,Guzel Faruk Güzel Faruk,exact,1.0,1.0,True
+3,8009F4080,Tonny Alexander Pena Russell Pena Russell Tonny Alexander,56735,Tonny Alexander Pena Russell Peña Russell Tonny Alexander,exact,1.0,1.0,True
+4,800AA75A0,RIVERA SANDOVAL Hector Librado Rivera Sandoval Hector Librado,18969,RIVERA SANDOVAL Hector Librado Rivera Sandoval Héctor Librado,exact,1.0,1.0,True
+5,801CC5320,Pandoy Vivek Ashok,49060,Pandey Vivek Ashok,transliteration,0.9,1.0,True
+6,801EFCC90,Ayad Yosof,20721,Ayad Yosef,transliteration,0.9,1.0,True
+7,8021F4980,Kademi Mohammad Reza,47590,Khademi Mohammad Reza,transliteration,0.9,1.0,True
+8,8024CC250,Al-Tikroti Abid Hamid Mahmud,7846,AL-TIKRITI Abid Hamid Mahmud,transliteration,0.9,1.0,True
+9,802E231D0,Domingi Medina Diaz,49766,Domingo Medina Diaz,transliteration,0.9,1.0,True
+10,803379270,Bojkov Va5Sil Kroumov,32011,Bojkov Vassil Kroumov,typo_ocr,0.85,1.0,True
+11,8034D6E10,Alexander Valeryev1Ch Nikitin,36835,Alexander Valeryevich Nikitin,typo_ocr,0.85,1.0,True
+12,8041BF7D0,S3Rgey Alexandrovich Martynov,36832,Sergey Alexandrovich Martynov,typo_ocr,0.85,1.0,True
+13,8047477F0,Kob3Ts Oleksandr Yuriyovych,39212,Kobets Oleksandr Yuriyovych,typo_ocr,0.85,1.0,True
+14,80485F020,Kurban0V Nurmurad,40791,Kurbanov Nurmurad,typo_ocr,0.85,1.0,True
+15,8048FB3E0,Ihorovych Pavlo Filipchuk,39207,Filipchuk Pavlo Ihorovych,partial_reorder,0.9,1.0,True
+16,8049F0EA0,Mustafa DIN AL BADR,13423,BADR AL DIN Mustafa,partial_reorder,0.9,1.0,True
+17,804D10F10,Taysir Amer KHITI,30162,KHITI Amer Taysir,partial_reorder,0.9,1.0,True
+18,805132920,Rodina Sergeyevna Victoria,35711,Victoria Sergeyevna Rodina,partial_reorder,0.9,1.0,True
+19,805B15880,Andriyovych Viktor EMELIANENKO,39209,EMELIANENKO Viktor Andriyovych,partial_reorder,0.9,1.0,True
+20,805C0E6C0,Wanda Yosef,20721,Ayad Yosef,hard_negative,0.8,0.88,False
+21,805C27980,Brianna Nurmurad,40791,Kurbanov Nurmurad,hard_negative,0.8,0.88,False
+22,8070C5410,Maria Mustafa,13423,BADR AL DIN Mustafa,hard_negative,0.8,0.88,False
+23,808B12940,Christian Taysir,30162,KHITI Amer Taysir,hard_negative,0.8,0.88,False
+24,808BEB770,Stephanie Semyonovich,35217,Sobyanin Sergey Semyonovich,hard_negative,0.8,0.88,False
+25,808C25770,Katherine Mikhailovich,28344,Gotsanyuk Yuri Mikhailovich,hard_negative,0.8,0.88,False
+26,8094FE9F0,Samuel Saulius,51412,Staskus Saulius,hard_negative,0.8,0.88,False
+27,80A7BE8B0,Tamara Aminat,38722,Akhmadova Aminat,hard_negative,0.8,0.88,False
+28,80B500820,Anthony Rasem,8311,AHMAD Rasem,hard_negative,0.8,0.88,False
+29,80B524BD0,Kelly Marco,56297,Klinge Marco,hard_negative,0.8,0.88,False
+30,80BA7F8F0,Jean Chol,17620,Jang Song Chol,hard_negative,0.8,0.88,False
+31,80C3D6BE0,David Aleksandrovna,28352,Basova Lidia Aleksandrovna,hard_negative,0.8,0.88,False
+32,80C43E010,Jonathan Chol,52289,Jong In Chol,hard_negative,0.8,0.88,False
+33,80C816BF0,Brianna Mohammed,9652,ZBOUN Anwar Mohammed,hard_negative,0.8,0.88,False
+34,80D4A5300,Michele Stanislav,40494,Volfovich Stanislav,hard_negative,0.8,0.88,False
+35,80D833C00,Deborah Abogne,10849,DE VERA Pio Abogne,hard_negative,0.8,0.88,False
+36,80E135640,Catherine Jamshid,52821,Eshaghi Jamshid,hard_negative,0.8,0.88,False
+37,80E868AD0,Kyle Fangwei,11447,LI Fangwei,hard_negative,0.8,0.88,False
+38,80E977610,David Ratko,7744,MLADIC Ratko,hard_negative,0.8,0.88,False
+39,80EE54D00,Laura Noah,41700,Zaitar Noah,hard_negative,0.8,0.88,False
+40,80F519F20,Amanda Saifi,8104,AMMARI Saifi,hard_negative,0.8,0.88,False
+41,80F67CB80,Robert Alexander,41480,Ostrowsky Alexander,hard_negative,0.8,0.88,False
+42,80F6C6F80,Peter Alejandro,11950,PEREZ MANCILLA Alejandro,hard_negative,0.8,0.88,False
+43,80FCACF70,Andrew Kartapolov,35638,Andrey Valeriyevich Kartapolov,hard_negative,0.8,0.88,False
+44,80FE2FBA0,Chad Elaheh,50557,Yazdi Elaheh,hard_negative,0.8,0.88,False
+45,810C52630,Albert Miguel,7181,ALBISU IRIARTE Miguel,hard_negative,0.8,0.88,False
+46,810D7F490,Ricky Jiadong,28264,Li Jiadong,hard_negative,0.8,0.88,False
+47,8121E0600,Lisa Razi,12117,MUSAVI Razi,hard_negative,0.8,0.88,False
+48,8129CBB00,Brenda Dimitri,55935,Herard Dimitri,hard_negative,0.8,0.88,False
+49,814077860,Nathan Amir,15418,HAMZA Amir,hard_negative,0.8,0.88,False
