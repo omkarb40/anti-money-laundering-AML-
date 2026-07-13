@@ -1,212 +1,336 @@
-# AML Investigation Copilot — IBM AMLSim HI-Small
+# AML Investigation Copilot
 
-A deterministic, zero-cost anti-money laundering triage pipeline built over the
-IBM AMLSim HI-Small synthetic dataset. The system screens accounts against OFAC
-sanctions, resolves transaction-graph entity chains, fires typology rules, and
-produces anomaly scores. A fixed-precedence decision table routes each case to
-**ESCALATE** or **CLEAR**.
-
-This is the **Phase 1–3 control baseline** (no LLM). Phase 4 will add an LLM
-layer evaluated against this frozen baseline.
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Tests](https://img.shields.io/badge/tests-788%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-~89%25-green)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ---
 
-## Baseline Metrics (90-case eval set)
+## Overview
+
+This repository is a reproducible AI engineering research project built over the IBM AMLSim HI-Small synthetic dataset (~5 million transactions, ~515,000 accounts) and the U.S. Treasury OFAC sanctions lists. It implements a complete anti-money laundering triage pipeline — sanctions screening, entity graph resolution, typology rule evaluation, and anomaly scoring — wrapped in a fixed-precedence decision table that routes each case to ESCALATE or CLEAR without any LLM calls.
+
+The project's central question is whether agent orchestration frameworks can improve AML case triage while preserving auditability and measurable cost/latency. Answering that requires a control baseline held constant while the orchestration layer varies. Phases 1–3 build that baseline by implementing the same deterministic decision policy in three frameworks (LangGraph, CrewAI, OpenAI Agents SDK) and verifying they produce identical results on a frozen 90-case evaluation set.
+
+Reproducibility is a first-class constraint here, not an afterthought. Four artifacts are SHA-256 checksummed at the moment they are created — ground-truth fixtures, rule thresholds, the eval set, and the baseline metrics — and the pipeline refuses to run if any of them have changed. This prevents the most common evaluation errors: threshold rigging, eval leakage, and retroactive fixture adjustment.
+
+---
+
+## Features
+
+- Sanctions screening via OFAC SDN + Consolidated lists (fuzzy Jaro-Winkler + token-sort-ratio, AKA expansion)
+- Transaction-graph entity resolution (2-hop traversal, 515K-node graph, hop-2 capped at 50)
+- Eight AML typology rules: structuring, layering, fan-out/in, cycle, bipartite, corridor, velocity
+- Robust-z anomaly scoring — fully deterministic, no model object, no random state, no label leakage
+- Fixed-precedence decision table with explainable typed evidence on every disposition
+- Framework comparison harness: LangGraph, CrewAI, and OpenAI Agents SDK under a shared policy
+- Frozen 90-case evaluation set with reproducible SHA-256 checksums
+- Offline mini fixtures (5 cases covering all policy branches) for zero-dependency testing
+- GitHub Actions CI: base test suite + Phase 3 comparison workflow
+- 788 tests, ~89% coverage, offline by default
+
+---
+
+## System Architecture
+
+```
+IBM AMLSim HI-Small                  OFAC SDN + Consolidated
+(~5M transactions, ~515K accounts)   (public XML)
+              │                                │
+              ▼                                ▼
+       Step 0: Scaffold               Step 2: OFAC Index
+       Step 1: Identity Overlay       (AKA expansion, normalization)
+              │                                │
+              ▼                                │
+       Sanctions Screening ◄───────────────────┘
+              │
+              ▼
+       Entity Resolution
+       (2-hop graph traversal, pattern labels)
+              │
+              ▼
+       AML Rules + Risk Signals
+       (8 typology rules · robust-z anomaly score)
+              │
+              ▼
+       Evidence Aggregation
+       (SanctionsHit + RuleFiring + AnomalyScore → typed Pydantic bundle)
+              │
+              ▼
+       Agent Orchestration
+       ├── LangGraph Runner (70 LOC)
+       ├── CrewAI Runner (247 LOC)
+       └── OpenAI Agents Runner (376 LOC)
+              │
+              ▼
+       Explainable Investigation Decision
+       (ESCALATE / CLEAR + decision_reason + human_review_flagged)
+```
+
+Full architecture diagram (Mermaid): [`docs/images/phase3_architecture.mmd`](docs/images/phase3_architecture.mmd)
+
+Detailed module descriptions: [`docs/architecture.md`](docs/architecture.md)
+
+---
+
+## Framework Comparison
+
+All three framework adapters run against the same 90 frozen eval cases using the same shared decision policy (`mock_llm_call`). The policy is a deterministic 4-branch function; no LLM API is called.
+
+| Framework | LOC | Approach | p50 latency |
+|---|---|---|---|
+| **LangGraph** | 70 | TypedDict state · conditional edge routing | 0.78 ms |
+| **CrewAI** | 247 | Agent/Task/Crew · sequential execution | 43 ms |
+| **OpenAI Agents SDK** | 376 | `Runner.run_sync` · function tools | 3.8 ms |
+
+All adapters satisfy the `AMLAgentRunner` structural protocol: `framework_name: str` + `run(eval_path, baseline_path) -> list[Phase3CaseResult]`.
+
+**What this comparison measures and what it does not:**
+
+- Every framework receives identical pre-computed evidence bundles
+- Every framework executes the same deterministic decision policy
+- This is **not** a comparison of LLM reasoning quality — no model is called
+- Equal accuracy across frameworks is expected and confirms that the adapters correctly wrap the shared policy
+- The comparison isolates orchestration overhead, implementation complexity, and latency methodology
+
+See [`docs/phase3_framework_comparison.md`](docs/phase3_framework_comparison.md) for the experimental design, decision matrix, and portfolio claims.
+
+---
+
+## Evaluation Results
+
+All values are read directly from committed artifacts.
 
 | Metric | Value |
 |---|---|
-| Disposition accuracy | 75.56 % |
-| Weighted false-clear rate — primary | 22.52 % |
-| Sanctions precision | 100.0 % |
-| Sanctions recall | 100.0 % |
-| Latency p50 | ~51 ms |
-| Latency p95 | ~57 ms |
-| Total LLM cost | $0.00 |
+| Tests | 788 passing |
+| Coverage | ~89% |
+| Phase 1 accuracy (decision table only) | 75.56% |
+| Phase 1 weighted false-clear rate | 22.52% |
+| Shared-policy accuracy (all frameworks) | 78.89% |
+| Shared-policy weighted false-clear rate | 17.22% |
+| Sanctions precision / recall | 100% / 100% |
+| Disposition agreement across frameworks | 90/90 |
+| Reasoning agreement across frameworks | 90/90 |
+| Frameworks compared | 3 (LangGraph, CrewAI, OpenAI Agents SDK) |
+| API calls | 0 |
+| Token cost | $0.00 |
+| Offline reproducibility | Full (mini fixtures committed) |
 
-> Latency measured on a 2024 MacBook Pro M3. Accuracy and precision/recall are
-> hardware-independent. All disposition counts and metrics are **fully
-> deterministic** — identical results on every run.
+The accuracy improvement from 75.56% to 78.89% comes from the shared policy's additional conflict-resolution branch, not from any framework choice. All three frameworks produce identical dispositions by design.
 
-**Sanctions screening is saturated** at 100 % precision and recall across the
-15 true-positive and 15 hard-negative eval cases. Future accuracy gains are
-expected to come from conflict-resolution and typology cases (the remaining 60
-eval cases), not from further tuning of the sanctions matcher.
-
----
-
-## Architecture — Eight Steps
-
-| Step | Module | Role |
-|---|---|---|
-| 0 | `step0_scaffold` | Load and validate HI-Small CSV; assert row/account/ratio counts |
-| 1 | `step1_identity` | Assign synthetic Faker names; build 50-row ground-truth fixture |
-| 2 | `step2_sanctions` | OFAC SDN/Consolidated parse + fuzzy-name screening (Jaro-Winkler + token sort) |
-| 3 | `step3_entity` | Transaction-graph traversal → hop-1 / hop-2 counterparty chain |
-| 4 | `step4_rules` | Eight typology rules (structuring, passthrough, fan-out, cycle, …) |
-| 5 | `step5_anomaly` | Deterministic robust-z anomaly scoring; explicit feature-leakage exclusion |
-| 6 | `step6_eval` | Assemble frozen 90-case eval set across five case types (write-once) |
-| 7 | `step7_runner` | Fixed-precedence decision table + baseline CLI runner |
-| 8 | `step8_metrics` | Read-only metric computation; freeze `metrics_baseline.json` |
-
-See [`docs/architecture.md`](docs/architecture.md) for detailed module descriptions,
-data-flow diagram, and Pydantic schema overview.
-
-### Fully Deterministic Baseline
-
-Every component of the Phase 1 pipeline is deterministic:
-
-- **Step 1** — Faker names assigned from a committed seed (`FAKER_SEED=42`).
-- **Steps 2–4** — Rule evaluation is purely threshold-based; OFAC fuzzy matching
-  uses a fixed algorithm (Jaro-Winkler + token sort ratio).
-- **Step 5** — Robust-z anomaly scoring uses median and MAD statistics computed
-  from the population. No random state, no bootstrap, no model fitting.
-  `score_accounts()` produces bitwise-identical output on every call.
-- **Steps 6–8** — Eval set is frozen; decision table is immutable; metrics are
-  a pure function of results and gold labels.
-
-The only hardware-dependent value is wall-clock latency.  Disposition counts,
-accuracy, and precision/recall are identical across machines and runs.
-
-### Phase Roadmap
-
-| Phase | Description |
-|---|---|
-| **1 (current)** | Deterministic AML baseline: sanctions screening, entity resolution, rule engine, robust-z anomaly scoring, fixed-precedence decision table |
-| **2** | LangGraph agent: conflict resolution, typology interpretation, human-in-the-loop review, SAR narrative generation |
-| **3** | Framework comparison: LangGraph vs CrewAI vs OpenAI Agents SDK |
-| **4** | LLM evaluation against the frozen Phase 1 baseline |
-| **5** | Deployment and production architecture |
+Source files: `artifacts/metrics_baseline.json` (Phase 1) and `artifacts/phase3_comparison_metrics.json` (frameworks).
 
 ---
 
-## Dataset Requirements
+## Repository Structure
 
-**Raw data is not included in this repository.** Download it separately before
-running the pipeline.
-
-### IBM AMLSim HI-Small
-
-Available from the [IBM AMLSim repository](https://github.com/IBM/AMLSim)
-or the [IEEE DataPort release](https://ieee-dataport.org/open-access/amlsim).
-
-Required files — place in `data/raw/`:
-
-| File | Rows | Description |
-|---|---|---|
-| `HI-Small_Trans.csv` | 5,078,345 | Transaction records |
-| `HI-Small_Patterns.txt` | — | Typology pattern labels |
-
-> **Assertion gate:** the pipeline asserts exact row count (5,078,345 ± 0)
-> and account count (~515,080 ± 100). Using HI-Medium or a truncated download
-> fails immediately.
-
-### OFAC SDN + Consolidated Lists (Advanced XML format)
-
-Available from [U.S. Treasury OFAC](https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-list/sdn-advanced-data-formats).
-
-Required files — place in `data/raw/ofac/`:
-
-- `sdn_advanced.xml`
-- `cons_advanced.xml`
-
-OFAC data is a U.S. government publication and is in the public domain.
-Always use the current list from the [official OFAC site](https://ofac.treasury.gov)
-for any compliance application.
+```
+aml-copilot/
+├── pyproject.toml
+├── CONTRIBUTING.md
+├── .env.example
+├── data/
+│   ├── raw/                          # gitignored — download separately
+│   ├── processed/                    # gitignored — regenerated by pipeline
+│   └── fixtures/                     # committed and FROZEN
+│       ├── eval.jsonl                # 90 EvalCase rows
+│       └── ground_truth_matches.csv  # 50-row sanctions ground truth
+├── src/aml_copilot/
+│   ├── schemas.py                    # all Pydantic types (single source of truth)
+│   ├── utils/
+│   │   ├── checksum.py               # SHA-256 freeze verification
+│   │   └── normalize.py              # Unicode NFKD normalization
+│   ├── step0_scaffold/ … step8_metrics/   # Phase 1 pipeline (8 steps)
+│   ├── phase2_eval/                  # LangGraph Phase 2 adapter + evaluator
+│   └── phase3_compare/               # three framework adapters + comparison runner
+│       ├── _shared.py                # shared I/O, evidence builder, validator
+│       ├── mock_llm.py               # shared deterministic decision policy
+│       ├── protocol.py               # AMLAgentRunner structural protocol
+│       ├── langgraph_runner.py
+│       ├── crewai_runner.py
+│       ├── openai_agents_runner.py
+│       ├── metrics.py                # per-framework and comparison metric computation
+│       ├── run_comparison.py         # CLI entrypoint
+│       └── testing.py                # offline mini-fixture helpers (test use only)
+├── tests/
+│   ├── fixtures/                     # committed offline test fixtures
+│   │   ├── phase3_mini_eval.jsonl    # 5-case mini eval (all policy branches)
+│   │   ├── phase3_mini_baseline.jsonl
+│   │   └── phase3_expected_comparison.json
+│   └── test_*.py
+├── artifacts/
+│   ├── checksums.sha256              # SHA-256 of frozen artifacts
+│   ├── metrics_baseline.json         # Phase 1 baseline (FROZEN)
+│   ├── phase2_langgraph_metrics.json # Phase 2 summary
+│   └── phase3_comparison_metrics.json
+├── docs/
+│   ├── architecture.md
+│   ├── reproducibility.md
+│   ├── phase3_framework_comparison.md
+│   └── images/phase3_architecture.mmd
+└── .github/workflows/
+    ├── test.yml                      # base suite CI
+    └── phase3-compare.yml            # Phase 3 comparison CI
+```
 
 ---
 
-## Setup
+## Quick Start
+
+### Install
 
 ```bash
 git clone <repo-url>
 cd aml-copilot
 
-# Create a virtual environment (Python 3.11+ required)
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 
-# Install the package and dev dependencies
+# Base install (Steps 0–8, LangGraph)
 pip install -e ".[dev]"
 
-# Copy and fill in the environment template
-cp .env.example .env
-# Edit .env to set DATA_DIR and OFAC paths if non-default
+# Add CrewAI and OpenAI Agents SDK for Phase 3 comparison
+pip install -e ".[dev,compare]"
 ```
 
----
-
-## Running Tests
-
-Most unit tests use small synthetic fixtures and **do not require the raw dataset**:
+### Run the test suite
 
 ```bash
-# Fast unit tests — no raw data required
-pytest tests/ -k "not integration" -q
+# Offline tests — no raw data, no API keys required
+pytest -k "not integration and not live" -q
 
-# Full suite — requires HI-Small and OFAC data in data/raw/
+# With coverage
+pytest -k "not integration and not live" --cov=aml_copilot --cov-report=term-missing -q
+
+# Full suite (requires raw data and generated artifacts)
 pytest -q
 ```
 
----
+### Run the mini comparison (no raw data required)
 
-## Running the Baseline Pipeline
-
-Steps must be executed in order. See [`docs/reproducibility.md`](docs/reproducibility.md)
-for the complete step-by-step sequence with expected outputs.
+Works immediately after cloning. Covers all four decision-policy branches.
 
 ```bash
-# Step 7 — run the full baseline decision table
+python -m aml_copilot.phase3_compare.run_comparison \
+  --eval      tests/fixtures/phase3_mini_eval.jsonl \
+  --baseline  tests/fixtures/phase3_mini_baseline.jsonl \
+  --out       /tmp/phase3_mini_comparison.json
+```
+
+Expected output:
+```
+VERDICT: PASS
+PASS — All frameworks produce identical results.
+```
+
+### Run the full 90-case comparison (requires raw data)
+
+Prerequisites: `data/raw/HI-Small_Trans.csv` from IBM AMLSim and `data/raw/ofac/sdn_advanced.xml` + `cons_advanced.xml` from U.S. Treasury OFAC.
+
+```bash
+# Phase 1: run the deterministic baseline
 python -m aml_copilot.step7_runner.run_baseline \
     --eval data/fixtures/eval.jsonl \
     --out  artifacts/results.jsonl
 
-# Step 8 — compute and freeze baseline metrics
-python -m aml_copilot.step8_metrics.metrics
+# Phase 3: compare all three frameworks
+python -m aml_copilot.phase3_compare.run_comparison \
+    --eval      data/fixtures/eval.jsonl \
+    --baseline  artifacts/results.jsonl \
+    --out       artifacts/phase3_comparison_metrics.json
 
-# Verify all frozen artifact checksums
+# Verify frozen artifact checksums
 python -m aml_copilot.utils.checksum --verify artifacts/checksums.sha256
 ```
 
 ---
 
-## Committed Frozen Artifacts
+## Documentation
 
-These files are committed to the repository and must not be modified after creation.
-Their SHA-256 digests are recorded in `artifacts/checksums.sha256` and verified
-at the start of every pipeline run.
+| Document | Description |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Module boundaries, data flow, step-by-step design decisions |
+| [`docs/reproducibility.md`](docs/reproducibility.md) | Step-by-step sequence from fresh clone; checksum policy; known non-determinism |
+| [`docs/phase3_framework_comparison.md`](docs/phase3_framework_comparison.md) | Experimental design, decision matrix, adapter implementation notes, portfolio claims |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development workflow, test conventions, frozen-artifact policy |
 
-| File | Frozen at | Contents |
-|---|---|---|
-| `data/fixtures/ground_truth_matches.csv` | Step 1 | 50-row sanctions ground truth (20 TP + 30 hard negatives) |
-| `data/fixtures/eval.jsonl` | Step 6 | 90-case evaluation set across five case types |
-| `src/aml_copilot/step4_rules/thresholds.py` | Step 4 | Rule thresholds (must not change after eval construction) |
-| `artifacts/checksums.sha256` | Incrementally | SHA-256 manifest for all frozen files |
-| `artifacts/metrics_baseline.json` | Step 8 | Phase 4 control row |
+---
 
-**`artifacts/results.jsonl` is not committed** — it is a generated output that
-changes with every run and carries machine-specific latency timings.
+## Current Capabilities
 
-### Fixture tracking decision
+- Sanctions screening against OFAC SDN and Consolidated lists with AKA expansion and Unicode NFKD normalization
+- Fuzzy name matching (Jaro-Winkler + token-sort-ratio) with a calibrated 0.85/0.90 threshold ladder
+- Entity graph construction and 2-hop counterparty traversal across 515K accounts
+- Eight AML typology rules: structuring, rapid in/out passthrough, fan-out, fan-in, cycle, bipartite scatter-gather, high-risk corridor, and general velocity
+- Deterministic robust-z anomaly scoring with an explicit feature-exclusion list and no label leakage
+- Fixed-precedence decision table producing `ESCALATE` / `CLEAR` with typed evidence on every case
+- Three equivalent framework adapters (LangGraph, CrewAI, OpenAI Agents SDK) verified to produce identical output
+- 90-case frozen evaluation set with five case-type slices (IBM-labeled, sanctions hits, near-misses, rule/anomaly conflicts, typology)
+- SHA-256 checksum enforcement on four frozen artifacts; pipeline aborts on any mismatch
+- Offline mini fixtures for CI and local development with no raw-data dependency
+- GitHub Actions workflows for base tests and Phase 3 comparison
 
-`data/fixtures/eval.jsonl` (26 KB) and `ground_truth_matches.csv` (4.6 KB) are
-tracked because:
-- They are synthetic (Faker names + AMLSim account IDs, no real personal data).
-- The OFAC canonical names in `ground_truth_matches.csv` are from the public-domain
-  U.S. Treasury SDN list.
-- Tracking them allows tests and checksum verification to work on a fresh clone
-  without rebuilding Steps 1 and 6 from raw data.
+---
+
+## Limitations
+
+- **Synthetic data.** IBM AMLSim generates transactions algorithmically. Real financial crime patterns differ in distribution, noise, and typology complexity.
+- **No live LLM reasoning.** The current decision policy is a deterministic 4-branch function. Replacing it with a real model (future work) changes the experiment fundamentally.
+- **Framework comparison is deterministic.** All three adapters call the same function. Equal accuracy is expected and does not reflect LLM reasoning quality or framework capability in general.
+- **Static OFAC snapshot.** Sanctions lists change. The ground-truth fixture was built against a mid-2025 SDN snapshot; hard-negative score bounds may shift on list update.
+- **Machine-specific latency.** p50/p95 latency values in committed artifacts reflect a MacBook Pro M3. Your hardware will differ.
+- **Not for production compliance.** AML typology rules here do not constitute a compliance program. The system has not been tested against real customer records or validated for regulatory requirements.
+- **Human review remains required.** The `human_review_flagged` field is a routing signal, not a final decision. All escalated cases require investigator review.
+
+---
+
+## Future Work
+
+- Replace `mock_llm_call` with real LLM providers and measure accuracy, false-clear rate, cost, and latency against the frozen Phase 1 baseline
+- Evaluate multiple models within each framework to separate model quality from orchestration overhead
+- Expand explainability: natural-language rationale generation anchored to the typed evidence bundle
+- Collect human-investigator feedback to calibrate the decision table and measure inter-rater agreement
+- Investigate production deployment considerations: latency SLAs, audit logging, model versioning, and compliance documentation
+
+---
+
+## Design Principles
+
+**Reproducibility.** Four artifacts are checksummed at creation and enforced on every pipeline run. Seeded Faker output, committed thresholds, and frozen eval sets make every result independently verifiable.
+
+**Deterministic evaluation.** No randomness enters the scoring, policy, or framework execution paths. Two independent runs on the same inputs must produce byte-identical outputs.
+
+**Explainability.** Every disposition carries a typed evidence bundle — `SanctionsHit`, `RuleFiring`, `AnomalyScore` — and a `decision_reason` string naming the exact branch of the decision table that fired. Nothing is black-box.
+
+**Framework neutrality.** The `AMLAgentRunner` structural protocol ensures all three adapters are interchangeable. The comparison harness validates orchestration differences in isolation; it does not favor any framework.
+
+**Testability.** 788 tests, offline mini fixtures, and four pytest markers (`integration`, `live`, `slow`, `compare`) let contributors run the full suite without raw data or API keys. Coverage is enforced in CI.
+
+**Modular architecture.** Steps 2–5 have no imports from each other. All inter-step data passes through `schemas.py` Pydantic types. Module boundaries are documented in `docs/architecture.md` and enforced by code review.
+
+---
+
+## Data Attribution
+
+**IBM AMLSim HI-Small**
+
+> Altman, Erik and Blanuša, Jovan and von Niederhäusern, Luc and Bhatt, Bharat and
+> Sperl, Erik and Stockinger, Kurt. "Realistic Synthetic Financial Transactions for
+> Anti-Money Laundering Models." *Advances in Neural Information Processing Systems*
+> (NeurIPS), 2023.
+
+Available from the [IBM AMLSim repository](https://github.com/IBM/AMLSim) and [IEEE DataPort](https://ieee-dataport.org/open-access/amlsim).
+
+**OFAC SDN + Consolidated Lists**
+
+Published by the U.S. Department of the Treasury, Office of Foreign Assets Control. Public domain. Always retrieve the current list from the [official OFAC site](https://ofac.treasury.gov) for any compliance application.
 
 ---
 
 ## Responsible Use
 
-This project uses **synthetic transaction data** (IBM AMLSim) and publicly
-available **government sanctions lists** (OFAC SDN/Consolidated). It is a
-research baseline and has not been validated for production AML compliance.
+This project uses synthetic transaction data and public government sanctions lists. It is a research baseline and has not been validated for production AML compliance.
 
-- Do not use this system as the sole or primary basis for any real financial
-  compliance decision.
-- The OFAC sanctions lists used here are maintained by the U.S. Department of
-  the Treasury. Always retrieve current data from the
-  [official OFAC site](https://ofac.treasury.gov) for compliance applications.
-- This codebase is released under the MIT License. See [`LICENSE`](LICENSE).
+- Do not use this system as the sole or primary basis for any real financial compliance decision.
+- Released under the MIT License. See [`LICENSE`](LICENSE) for the full text.

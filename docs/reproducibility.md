@@ -189,18 +189,71 @@ All four entries should pass:
 
 ---
 
+## 7b — Phase 3 Framework Comparison (optional; requires Step 7 output)
+
+After completing Step 7 (which produces `artifacts/results.jsonl`), install the
+compare extras and run the three-framework comparison:
+
+```bash
+pip install -e ".[dev,compare]"
+
+python -m aml_copilot.phase3_compare.run_comparison \
+    --eval      data/fixtures/eval.jsonl \
+    --baseline  artifacts/results.jsonl \
+    --out       artifacts/phase3_comparison_metrics.json
+```
+
+Expected output:
+
+```
+VERDICT: PASS
+PASS — All frameworks produce identical results.
+```
+
+**Offline five-case demo (no raw data required):**
+
+```bash
+python -m aml_copilot.phase3_compare.run_comparison \
+    --eval      tests/fixtures/phase3_mini_eval.jsonl \
+    --baseline  tests/fixtures/phase3_mini_baseline.jsonl \
+    --out       /tmp/phase3_mini_comparison.json
+```
+
+**Validate the comparison artifact:**
+
+```python
+from aml_copilot.schemas import Phase3ComparisonMetrics
+import json
+
+data = json.loads(open("artifacts/phase3_comparison_metrics.json").read())
+cm = Phase3ComparisonMetrics.model_validate(data)
+assert cm.comparison_passed
+assert cm.eval_size == 90
+assert cm.all_dispositions_agree
+print("Validation OK:", cm.frameworks[0].disposition_accuracy)
+```
+
+---
+
 ## 8 — Run the test suite
 
 ```bash
-# Fast unit tests (no raw data required)
-pytest tests/ -k "not integration" -q
+# Fast unit + Phase 3 offline tests (no raw data, no API keys required)
+pytest -k "not integration and not live" -q
 
-# Full suite including integration tests (requires raw data)
+# Phase 3 comparison tests with coverage gate
+pytest tests/test_phase3_compare.py \
+    -k "not integration and not live" \
+    --cov=aml_copilot.phase3_compare \
+    --cov-fail-under=85 -q
+
+# Full suite including integration tests (requires raw data and generated artifacts)
 pytest -q
 ```
 
 Most integration tests are automatically skipped when raw data or built artifacts
-are absent (they use `pytest.mark.skipif` guards).
+are absent (they use `pytest.mark.integration`). Use `-k "not integration and not live"`
+to run all offline tests cleanly on a fresh clone.
 
 ---
 
@@ -208,23 +261,77 @@ are absent (they use `pytest.mark.skipif` guards).
 
 ```
 artifacts/
-  checksums.sha256          # 4 entries, all verified
-  metrics_baseline.json     # frozen Phase 4 control row
-  results.jsonl             # 90 CaseResult rows (not committed)
+  checksums.sha256                     # 4 entries, all verified
+  metrics_baseline.json                # frozen Phase 1 control row (FROZEN)
+  phase2_langgraph_metrics.json        # Phase 2/3 summary (committed)
+  phase3_comparison_metrics.json       # Phase 3 comparison summary (committed)
+  results.jsonl                        # 90 CaseResult rows (not committed)
 data/
   fixtures/
-    eval.jsonl              # 90 EvalCase rows (committed, frozen)
-    ground_truth_matches.csv # 50-row sanctions fixture (committed, frozen)
+    eval.jsonl                         # 90 EvalCase rows (committed, FROZEN)
+    ground_truth_matches.csv           # 50-row sanctions fixture (committed, FROZEN)
   processed/
-    accounts.parquet        # 515,080 accounts (not committed)
-    identity_overlay.parquet # 515,080 accounts with names (not committed)
-  raw/                      # not committed — provide your own
+    accounts.parquet                   # 515,080 accounts (not committed)
+    identity_overlay.parquet           # 515,080 accounts with names (not committed)
+  raw/                                 # not committed — provide your own
     HI-Small_Trans.csv
     HI-Small_Patterns.txt
     ofac/
       sdn_advanced.xml
       cons_advanced.xml
 ```
+
+---
+
+---
+
+## Determinism and Reproducibility Limits
+
+**Fully deterministic (bitwise-identical across runs):**
+- All dispositions (ESCALATE / CLEAR)
+- Disposition accuracy and false-clear rate
+- Sanctions precision and recall
+- Override rate and human-review rate
+- Agreement flags (all dispositions agree, etc.)
+
+**Not bitwise-identical (expected to vary):**
+- `generated_at` in JSON artifacts — this is a UTC timestamp set at write time
+- Per-case `latency_ms` — wall-clock timing is machine-specific
+- `latency_p50_ms`, `latency_p95_ms`, `average_latency_ms` — derived from latency
+
+When validating reproducibility semantically, compare all fields except
+`generated_at` and latency-derived fields. The `model_dump()` comparison in tests
+uses `exclude={"generated_at", "latency_p50_ms", "latency_p95_ms"}` where needed.
+
+---
+
+## Frozen Artifact Policy
+
+| Artifact | Status | Why |
+|---|---|---|
+| `data/fixtures/ground_truth_matches.csv` | Committed + checksummed | Must not change after sanctions matcher tuning |
+| `src/aml_copilot/step4_rules/thresholds.py` | Committed + checksummed | Must not change after eval construction |
+| `data/fixtures/eval.jsonl` | Committed + checksummed | Modifying after seeing baseline = eval leakage |
+| `artifacts/metrics_baseline.json` | Committed + checksummed | Phase 4 control row; immutable reference |
+| `artifacts/phase2_langgraph_metrics.json` | Committed (not checksummed) | Compact summary; exploratory Phase 3 artifact |
+| `artifacts/phase3_comparison_metrics.json` | Committed (not checksummed) | Official Phase 3 comparison summary |
+| `artifacts/results.jsonl` | Not committed | Machine-specific latency; fully reproducible |
+| `artifacts/phase2_langgraph_results.jsonl` | Not committed | 107 KB per-case results; not needed for reproducibility |
+
+Phase 3 artifacts (`phase3_comparison_metrics.json`) are **not** added to
+`artifacts/checksums.sha256` because they are exploratory records (generated at
+research time), not integrity gates for the production pipeline.
+
+---
+
+## CI Equivalence
+
+| Local command | CI workflow | Step |
+|---|---|---|
+| `pytest -k "not integration and not live and not compare" -q` | `test.yml` | "Run base tests" |
+| `pytest tests/test_phase3_compare.py -k "not integration and not live" --cov-fail-under=85` | `phase3-compare.yml` | "Run offline Phase 3 comparison tests" |
+| `python -m aml_copilot.phase3_compare.run_comparison --eval tests/fixtures/phase3_mini_eval.jsonl ...` | `phase3-compare.yml` | "Run mini comparison CLI" |
+| `python -m aml_copilot.utils.checksum --verify artifacts/checksums.sha256` | `test.yml` | "Verify frozen artifact checksums" |
 
 ---
 

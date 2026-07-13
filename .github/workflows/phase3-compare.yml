@@ -1,0 +1,100 @@
+name: Phase 3 Framework Comparison
+
+on:
+  push:
+    paths:
+      - "src/aml_copilot/phase3_compare/**"
+      - "src/aml_copilot/phase2_eval/**"
+      - "src/aml_copilot/schemas.py"
+      - "tests/test_phase3_compare.py"
+      - "tests/fixtures/phase3_mini_*.jsonl"
+      - "tests/fixtures/phase3_expected_comparison.json"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "src/aml_copilot/phase3_compare/**"
+      - "src/aml_copilot/phase2_eval/**"
+      - "src/aml_copilot/schemas.py"
+      - "tests/test_phase3_compare.py"
+      - "tests/fixtures/phase3_mini_*.jsonl"
+      - "tests/fixtures/phase3_expected_comparison.json"
+      - "pyproject.toml"
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-compare-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-compare-
+
+      - name: Install project (dev + compare extras)
+        run: pip install -e ".[dev,compare]"
+
+      - name: Report installed framework versions
+        run: |
+          python -c "
+          import importlib.metadata, sys
+          for pkg in ('langgraph', 'crewai', 'openai-agents', 'pydantic'):
+              try:
+                  v = importlib.metadata.version(pkg)
+              except importlib.metadata.PackageNotFoundError:
+                  v = 'not installed'
+              print(f'{pkg}: {v}')
+          print(f'python: {sys.version}')
+          "
+
+      - name: Run offline Phase 3 comparison tests with coverage
+        run: |
+          pytest tests/test_phase3_compare.py \
+            -k "not integration and not live" \
+            --cov=aml_copilot.phase3_compare \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=85 \
+            -q --tb=short
+
+      - name: Run mini comparison CLI
+        run: |
+          python -m aml_copilot.phase3_compare.run_comparison \
+            --eval tests/fixtures/phase3_mini_eval.jsonl \
+            --baseline tests/fixtures/phase3_mini_baseline.jsonl \
+            --out /tmp/phase3_mini_comparison.json
+
+      - name: Validate mini comparison artifact
+        run: |
+          python -c "
+          from aml_copilot.schemas import Phase3ComparisonMetrics
+          import json
+          data = json.loads(open('/tmp/phase3_mini_comparison.json').read())
+          cm = Phase3ComparisonMetrics.model_validate(data)
+          assert cm.comparison_passed, f'comparison_passed is False: {data}'
+          assert cm.eval_size == 5, f'eval_size is {cm.eval_size}'
+          assert cm.all_dispositions_agree, 'dispositions disagree'
+          print(f'PASS: comparison_passed=True, eval_size={cm.eval_size}')
+          "
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-phase3-compare
+          path: coverage.xml
+
+      - name: Upload mini comparison artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-mini-comparison
+          path: /tmp/phase3_mini_comparison.json

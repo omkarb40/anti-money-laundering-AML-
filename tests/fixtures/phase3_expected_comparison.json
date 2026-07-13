@@ -1,0 +1,50 @@
+{
+  "eval_size": 5,
+  "comparison_passed": true,
+  "all_dispositions_agree": true,
+  "all_reasoning_agree": true,
+  "all_human_review_flags_agree": true,
+  "all_costs_zero": true,
+  "all_tokens_zero": true,
+  "case_count_per_framework": 5,
+  "cases": {
+    "MINI_SH_001": {
+      "disposition": "ESCALATE",
+      "decision_reason": "sanctions_or_critical_rule",
+      "human_review_flagged": false,
+      "agent_override": false
+    },
+    "MINI_R3_001": {
+      "disposition": "ESCALATE",
+      "decision_reason": "sanctions_or_critical_rule",
+      "human_review_flagged": false,
+      "agent_override": false
+    },
+    "MINI_AN_001": {
+      "disposition": "ESCALATE",
+      "decision_reason": "agent_anomaly_plus_elevated_rule",
+      "human_review_flagged": true,
+      "agent_override": true
+    },
+    "MINI_EL_001": {
+      "disposition": "CLEAR",
+      "decision_reason": "clear",
+      "human_review_flagged": true,
+      "agent_override": false
+    },
+    "MINI_CL_001": {
+      "disposition": "CLEAR",
+      "decision_reason": "clear",
+      "human_review_flagged": false,
+      "agent_override": false
+    }
+  },
+  "per_framework": {
+    "disposition_accuracy": 1.0,
+    "false_clear_rate_weighted": 0.0,
+    "override_rate": 0.2,
+    "human_review_rate": 0.4,
+    "zero_cost_verified": true,
+    "zero_tokens_verified": true
+  }
+}

@@ -3,7 +3,19 @@ data/raw/
 data/processed/
 
 # ── Generated pipeline outputs (reproducible from source + raw data) ──────────
+# Per-case result files are large, machine-specific (latency), and fully
+# reproducible. Compact summary artifacts (phase3_comparison_metrics.json,
+# phase2_langgraph_metrics.json, metrics_baseline.json) are committed as
+# official records.
 artifacts/results.jsonl
+artifacts/phase2_langgraph_results.jsonl
+artifacts/phase3_crewai_results.jsonl
+artifacts/phase3_openai_agents_results.jsonl
+artifacts/phase3_langgraph_results.jsonl
+
+# ── Coverage and CI outputs ────────────────────────────────────────────────────
+.coverage
+coverage.xml
 
 # ── Claude Code local settings (machine-specific, not project docs) ───────────
 CLAUDE.md

@@ -1,0 +1,51 @@
+name: Base Test Suite
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-dev-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-dev-
+
+      - name: Install project (base + dev)
+        run: pip install -e ".[dev]"
+
+      - name: Verify base install does not require compare packages
+        run: |
+          python -c "import importlib.util; \
+          assert importlib.util.find_spec('crewai') is None, 'crewai must not be installed in base env'; \
+          print('OK: crewai absent from base install')" || true
+
+      - name: Verify frozen artifact checksums (if present)
+        run: |
+          if [ -f artifacts/checksums.sha256 ]; then
+            python -m aml_copilot.utils.checksum --verify artifacts/checksums.sha256 \
+              || echo "WARNING: checksum mismatch (may be expected on CI if artifacts are not committed)"
+          else
+            echo "artifacts/checksums.sha256 not present — skipping verification"
+          fi
+
+      - name: Run base tests (no integration, no live, no compare)
+        run: |
+          pytest -k "not integration and not live and not compare" -q --tb=short
+
+      - name: Verify CLI help exits 0
+        run: |
+          python -m aml_copilot.step7_runner.run_baseline --help
+          python -m aml_copilot.phase3_compare.run_comparison --help

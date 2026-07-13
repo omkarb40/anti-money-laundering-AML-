@@ -304,3 +304,106 @@ Any digest mismatch or missing file aborts with a non-zero exit code.
 | [NumPy](https://numpy.org) | Robust-z anomaly scoring (median, MAD, ranking) |
 | [lxml](https://lxml.de) | OFAC XML parsing |
 | [pytest](https://pytest.org) | Unit and integration tests |
+
+---
+
+## Phase 2 — LangGraph Orchestration (Offline Policy)
+
+Phase 2 wraps the Phase 1 evidence pipeline in a LangGraph agent that applies a
+shared deterministic policy (`mock_llm_call`). It does not call a real LLM.
+
+The LangGraph adapter is implemented in `src/aml_copilot/phase2_eval/`.
+Its metrics are stored in `artifacts/phase2_langgraph_metrics.json`.
+
+**Phase 2 results (90-case eval, offline policy):**
+
+| Metric | Value |
+|---|---|
+| Disposition accuracy | 78.89% |
+| Weighted false-clear rate | 17.22% |
+| Override rate (policy vs. baseline) | 5.56% |
+| Human-review rate | 16.67% |
+| Tokens used | 0 |
+| Cost | $0.00 |
+
+---
+
+## Phase 3 — Framework Comparison
+
+Phase 3 implements the same shared policy (`mock_llm_call`) in three agent
+frameworks: LangGraph, CrewAI, and OpenAI Agents SDK. The experiment holds policy
+and evidence constant and varies only the orchestration framework.
+
+All adapters satisfy the `AMLAgentRunner` protocol (`src/aml_copilot/phase3_compare/protocol.py`).
+
+**Architecture diagram:** see [`docs/images/phase3_architecture.mmd`](images/phase3_architecture.mmd)
+for the Mermaid source. Embed it in any Mermaid-capable viewer, or use
+[mermaid.live](https://mermaid.live) to render it.
+
+**Detailed comparison:** see [`docs/phase3_framework_comparison.md`](phase3_framework_comparison.md).
+
+**Phase 3 results (90-case eval, all frameworks):**
+
+| Metric | LangGraph | CrewAI | OpenAI Agents SDK |
+|---|---|---|---|
+| Accuracy | 78.89% | 78.89% | 78.89% |
+| LOC | 70 | 247 | 376 |
+| Latency p50 (ms) | 0.78 | 42.96 | 3.81 |
+| Tokens / Cost | 0 / $0.00 | 0 / $0.00 | 0 / $0.00 |
+
+All three frameworks agree on 90/90 dispositions, decision reasons, and
+human-review flags. This is expected: they call the same policy function.
+
+### AMLAgentRunner Protocol
+
+Every Phase 3 adapter implements:
+
+```python
+class AMLAgentRunner(Protocol):
+    framework_name: str           # class-level string
+    def run(
+        self,
+        eval_path: Path,
+        baseline_path: Path,
+    ) -> list[Phase3CaseResult]: ...
+```
+
+To add a fourth framework, implement this protocol and register the runner in
+`RUNNER_REGISTRY` in `src/aml_copilot/phase3_compare/run_comparison.py`.
+
+### Shared Decision Policy (`mock_llm_call`)
+
+All frameworks pass an evidence dict to `mock_llm_call` and receive a deterministic
+decision. The four branches (in precedence order):
+
+| Branch | Condition | Disposition | human_review |
+|---|---|---|---|
+| 1 | Any SanctionsHit score ≥ 0.90 | ESCALATE | False |
+| 2 | Any RuleFiring severity == 3 | ESCALATE | False |
+| 3 | Anomaly percentile ≥ 0.90 AND any severity ≥ 2 | ESCALATE | True |
+| 4 | Fallthrough | CLEAR | True if pct > 0.85, else False |
+
+This policy **intentionally mirrors the Phase 1 decision table** with one addition
+(Branch 3's anomaly threshold and human-review flag). It is not a trained model and
+does not call any LLM endpoint.
+
+### Canonical Eval Path Safeguard
+
+When `run_comparison.py` is invoked against `data/fixtures/eval.jsonl` (the
+canonical frozen eval), it requires exactly 90 cases. When invoked against any other
+path (such as the five-case mini fixture in `tests/fixtures/`), it validates only
+that result count equals eval count. This prevents accidental production runs against
+reduced fixtures while keeping the runners fixture-size-agnostic.
+
+### Mini Fixture
+
+`tests/fixtures/phase3_mini_eval.jsonl` (5 cases) covers all four `mock_llm_call`
+policy branches and enables offline testing without raw data, API keys, or the full
+90-case run:
+
+```bash
+python -m aml_copilot.phase3_compare.run_comparison \
+  --eval   tests/fixtures/phase3_mini_eval.jsonl \
+  --baseline tests/fixtures/phase3_mini_baseline.jsonl \
+  --out    /tmp/phase3_mini_comparison.json
+```

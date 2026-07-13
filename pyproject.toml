@@ -14,6 +14,7 @@ dependencies = [
     "scikit-learn>=1.4",
     "numpy>=1.26",
     "lxml>=5.0",
+    "langgraph>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -21,9 +22,14 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
 ]
+compare = [
+    "crewai>=0.80",
+    "openai-agents>=0.18",
+]
 
 [project.scripts]
 run-baseline = "aml_copilot.step7_runner.run_baseline:main"
+run-comparison = "aml_copilot.phase3_compare.run_comparison:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aml_copilot"]
@@ -33,7 +39,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 markers = [
-    "integration: tests that require HI-Small data files on disk (deselect with -m 'not integration')",
+    "integration: tests that require generated artifacts (eval.jsonl, results.jsonl) — skip with -m 'not integration'",
+    "live: tests that require real API keys or live network access — always skipped in CI",
+    "slow: tests with significant wall-clock time (e.g. full 90-case framework runs)",
+    "compare: tests specific to the Phase 3 cross-framework comparison suite",
 ]
 
 [tool.coverage.run]

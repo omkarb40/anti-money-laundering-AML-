@@ -1,0 +1,85 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '13px'}}}%%
+flowchart TD
+
+    subgraph Sources["Data Sources"]
+        IBM["IBM AMLSim HI-Small\n5M transactions · 515K accounts"]
+        OFAC["OFAC SDN + Consolidated XML\n(U.S. Treasury, public domain)"]
+    end
+
+    subgraph Steps["Steps 0–5  ·  Deterministic Feature Extraction"]
+        S0["Step 0 · Scaffold\nassert row / account counts"]
+        S1["Step 1 · Identity Overlay\nFaker names (seeded) + ground_truth_matches.csv"]
+        S2["Step 2 · Sanctions Screen\nJaro-Winkler + token_sort_ratio"]
+        S3["Step 3 · Entity Resolve\nhop-1 / hop-2 graph traversal"]
+        S4["Step 4 · Rules Engine\n8 typology rules · thresholds.py"]
+        S5["Step 5 · Anomaly Score\nrobust-z · no random state"]
+    end
+
+    subgraph FrozenEval["🔒 Frozen Artifacts"]
+        GT["ground_truth_matches.csv\n50 rows — FROZEN Step 1"]
+        THRESH["thresholds.py — FROZEN Step 4"]
+        EVAL["eval.jsonl\n90 EvalCases — FROZEN Step 6"]
+        M1["metrics_baseline.json\nPhase 1 control row — FROZEN Step 8"]
+    end
+
+    subgraph Phase1["Phase 1  ·  Deterministic Baseline"]
+        DT["Step 7 · Decision Table\nfixed precedence · immutable\nIF sanctions≥0.90 OR sev-3 → ESCALATE\nELSE IF anomaly+sev≥2 → ESCALATE\nELSE CLEAR"]
+        M8["Step 8 · Metrics\naccuracy: 75.56% · FCR: 22.52%"]
+    end
+
+    subgraph Evidence["Shared Evidence Contract  (identical for all frameworks)"]
+        EV["SanctionsHits + RuleFireings\n+ AnomalyScore + baseline_disposition"]
+    end
+
+    subgraph NoNetwork["No-Network Boundary  ·  Zero Tokens  ·  Zero Cost"]
+        subgraph Phase3["Phase 3  ·  Framework Adapters"]
+            LG["LangGraph\n70 LOC\nTypedDict state\nconditional routing"]
+            CR["CrewAI\n247 LOC\nAgent + Task\nsequential crew"]
+            OA["OpenAI Agents SDK\n376 LOC\nRunner.run_sync\nfunction tools"]
+        end
+        MOCK["mock_llm_call\nShared Deterministic Policy\nBranch 1: sanctions ≥ 0.90 → ESCALATE\nBranch 2: sev-3 rule → ESCALATE\nBranch 3: anomaly + sev ≥ 2 → ESCALATE + human_review\nBranch 4: fallthrough → CLEAR"]
+    end
+
+    subgraph Output["Phase 3 Output"]
+        P3R["Phase3CaseResult × 90\nper framework"]
+        HR["human_review_flagged\n15 / 90 cases  (16.7%)"]
+        CMP["phase3_comparison_metrics.json\ncomparison_passed: true\nall agreements: true\naccuracy: 78.89% (all 3 frameworks)"]
+    end
+
+    subgraph Future["Phase 4  ·  Planned"]
+        LIVE["Live LLM Provider\nOpenAI · Anthropic · etc.\n(replace mock_llm_call)"]
+    end
+
+    IBM --> S0 --> S1
+    OFAC --> S2
+    S1 --> S2 & S3
+    S1 --> GT
+    S3 --> S4 & S5
+    THRESH --> S4
+    S2 --> EV
+    S4 --> EV
+    S5 --> EV
+    S1 --> EVAL
+
+    EVAL --> DT
+    EV --> DT
+    DT --> M8 --> M1
+    M1 --> CMP
+
+    EV --> LG & CR & OA
+    EVAL --> LG & CR & OA
+
+    LG --> MOCK
+    CR --> MOCK
+    OA --> MOCK
+    MOCK --> P3R
+    P3R --> HR
+    P3R --> CMP
+
+    LG -. "Phase 4 — replace\nmock with live provider" .-> LIVE
+    CR -. "Phase 4" .-> LIVE
+    OA -. "Phase 4" .-> LIVE
+
+    style FrozenEval fill:#fff3e0,stroke:#e65100
+    style NoNetwork fill:#e8f5e9,stroke:#1b5e20
+    style Future fill:#f3e5f5,stroke:#4a148c
