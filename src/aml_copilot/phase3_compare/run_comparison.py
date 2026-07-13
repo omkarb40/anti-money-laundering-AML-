@@ -7,7 +7,7 @@ and writes phase3_comparison_metrics.json.
 
 Adding Framework #4
 -------------------
-Register one new entry in RUNNER_REGISTRY at the bottom of the imports section.
+Register one new entry in _RUNNER_SPECS at the bottom of the constants section.
 No other code needs to change.
 
 CLI
@@ -28,14 +28,11 @@ from pathlib import Path
 from typing import Any
 
 from aml_copilot.phase3_compare._shared import EXPECTED_EVAL_SIZE, load_eval_cases
-from aml_copilot.phase3_compare.crewai_runner import CrewAIRunner
-from aml_copilot.phase3_compare.langgraph_runner import LangGraphRunner
 from aml_copilot.phase3_compare.metrics import (
     compute_comparison_metrics,
     compute_framework_metrics,
     get_framework_versions,
 )
-from aml_copilot.phase3_compare.openai_agents_runner import OpenAIAgentsRunner
 from aml_copilot.schemas import EvalCase, Phase3CaseResult, Phase3ComparisonMetrics
 
 logger = logging.getLogger(__name__)
@@ -56,16 +53,57 @@ _DEFAULTS: dict[str, Path] = {
     "p2_metrics": _ROOT / "artifacts/phase2_langgraph_metrics.json",
 }
 
-# ── Runner registry ───────────────────────────────────────────────────────────
-# Single registration point.  To add Framework #4, append one tuple here:
-#   (MyNewRunner, _PKG / "my_new_runner.py")
-# Framework execution order is the order of this list.
+# ── Runner registry — lazy loading ────────────────────────────────────────────
+# Framework runners (crewai, openai-agents) are optional [compare] dependencies.
+# Do NOT import them at module level — this file must be importable with only
+# [dev] installed (e.g., for --help, argparse, and import-time tests).
+# Runners are resolved via importlib only when a comparison run starts.
+#
+# To add Framework #4, append one tuple to _RUNNER_SPECS:
+#   ("aml_copilot.phase3_compare.my_new_runner", "MyNewRunner", _PKG / "my_new_runner.py")
+# Framework execution order follows the list order.
 
-RUNNER_REGISTRY: list[tuple[Any, Path]] = [
-    (LangGraphRunner,    _PKG / "langgraph_runner.py"),
-    (CrewAIRunner,       _PKG / "crewai_runner.py"),
-    (OpenAIAgentsRunner, _PKG / "openai_agents_runner.py"),
+_RUNNER_SPECS: list[tuple[str, str, Path]] = [
+    # (module_path, class_name, source_file)
+    ("aml_copilot.phase3_compare.langgraph_runner",    "LangGraphRunner",    _PKG / "langgraph_runner.py"),
+    ("aml_copilot.phase3_compare.crewai_runner",       "CrewAIRunner",       _PKG / "crewai_runner.py"),
+    ("aml_copilot.phase3_compare.openai_agents_runner","OpenAIAgentsRunner", _PKG / "openai_agents_runner.py"),
 ]
+
+_COMPARE_INSTALL_MSG: str = (
+    "Phase 3 comparison dependencies are not installed.\n"
+    "Install them with:\n"
+    "    pip install -e \".[dev,compare]\""
+)
+
+
+def _build_runner_registry() -> list[tuple[Any, Path]]:
+    """Import runner classes via importlib. Registry order mirrors _RUNNER_SPECS.
+
+    Raises
+    ------
+    ImportError
+        If any optional comparison dependency (crewai, openai-agents) is missing.
+        The error message names the exact install command.
+    """
+    import importlib
+
+    registry: list[tuple[Any, Path]] = []
+    first_error: ModuleNotFoundError | None = None
+
+    for module_path, class_name, runner_file in _RUNNER_SPECS:
+        try:
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            registry.append((cls, runner_file))
+        except ModuleNotFoundError as exc:
+            if first_error is None:
+                first_error = exc
+
+    if first_error is not None:
+        raise ImportError(_COMPARE_INSTALL_MSG) from first_error
+
+    return registry
 
 
 # ── Canonical eval-path safeguard ─────────────────────────────────────────────
@@ -102,6 +140,7 @@ def run(
     *,
     p1_metrics_path: Path | None = None,
     p2_metrics_path: Path | None = None,
+    runner_registry: list[tuple[Any, Path]] | None = None,
 ) -> Phase3ComparisonMetrics:
     """Execute the comparison and write the output artifact.
 
@@ -117,6 +156,9 @@ def run(
         Phase 1 metrics JSON; default artifacts/metrics_baseline.json.
     p2_metrics_path : Path, optional
         Phase 2 metrics JSON; default artifacts/phase2_langgraph_metrics.json.
+    runner_registry : list[tuple[Any, Path]], optional
+        Pre-built registry from _build_runner_registry(). When None (default),
+        the registry is built lazily inside this call.
 
     Returns
     -------
@@ -126,6 +168,8 @@ def run(
     ------
     FileNotFoundError
         If eval_path or baseline_path do not exist.
+    ImportError
+        If optional comparison dependencies are missing and runner_registry is None.
     """
     if not eval_path.exists():
         raise FileNotFoundError(f"Eval set not found: {eval_path}")
@@ -134,6 +178,9 @@ def run(
             f"Baseline results not found: {baseline_path}\n"
             "Run python -m aml_copilot.step7_runner.run_baseline first."
         )
+
+    if runner_registry is None:
+        runner_registry = _build_runner_registry()
 
     eval_cases = load_eval_cases(eval_path)
     _validate_eval_mode(eval_path, eval_cases)
@@ -146,7 +193,7 @@ def run(
     framework_results: dict[str, list[Phase3CaseResult]] = {}
     runner_errors: dict[str, Exception] = {}
 
-    for runner_cls, runner_file in RUNNER_REGISTRY:
+    for runner_cls, runner_file in runner_registry:
         fw = runner_cls.framework_name
         logger.info("[M5] Running %s …", fw)
         t0 = time.perf_counter()
@@ -162,7 +209,7 @@ def run(
 
     # ── Compute per-framework metrics (registry order preserved) ──────────────
     framework_metrics = []
-    for runner_cls, runner_file in RUNNER_REGISTRY:
+    for runner_cls, runner_file in runner_registry:
         fw = runner_cls.framework_name
         if fw in framework_results:
             m = compute_framework_metrics(
@@ -378,11 +425,14 @@ def main() -> None:
             print(f"[FAIL] {label} file not found: {fpath}", file=sys.stderr)
             sys.exit(1)
 
-    t_start = time.perf_counter()
+    # Build the registry early so missing-deps errors surface before file I/O.
+    try:
+        runner_registry = _build_runner_registry()
+    except ImportError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
 
-    # Track runner errors separately for the summary (run() handles isolation)
-    runner_errors: dict[str, Exception] = {}
-    _orig_run_one = _run_one_isolated
+    t_start = time.perf_counter()
 
     comparison = run(
         eval_path=eval_path,
@@ -390,11 +440,12 @@ def main() -> None:
         out_path=out_path,
         p1_metrics_path=p1_path,
         p2_metrics_path=p2_path,
+        runner_registry=runner_registry,
     )
 
     # Reconstruct runner_errors from comparison (frameworks in registry not in comparison)
     executed_fws = {m.framework for m in comparison.frameworks}
-    registry_fws = {cls.framework_name for cls, _ in RUNNER_REGISTRY}
+    registry_fws = {cls.framework_name for cls, _ in runner_registry}
     failed_fws = registry_fws - executed_fws
     runner_errors = {fw: RuntimeError("Execution failed") for fw in failed_fws}
 
@@ -423,3 +474,15 @@ def _run_one_isolated(
 
 if __name__ == "__main__":
     main()
+
+
+# ── Backward-compatible lazy attribute ────────────────────────────────────────
+# Supports `from aml_copilot.phase3_compare.run_comparison import RUNNER_REGISTRY`
+# without requiring crewai/openai-agents at module import time (PEP 562).
+# Access triggers lazy loading; raises ImportError with install instructions if
+# optional comparison dependencies are not installed.
+
+def __getattr__(name: str) -> Any:
+    if name == "RUNNER_REGISTRY":
+        return _build_runner_registry()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
