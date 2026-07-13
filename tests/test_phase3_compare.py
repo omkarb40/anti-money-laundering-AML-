@@ -1785,6 +1785,7 @@ def _m5_eval_cases_90() -> "list[EvalCase]":
 
 class TestM5RegistryAndSchema:
     """Tests for RUNNER_REGISTRY structure, LOC, versions, and schema new fields."""
+    pytestmark = pytest.mark.compare
 
     def test_registry_has_three_entries(self):
         """RUNNER_REGISTRY contains exactly 3 registered runners."""
@@ -3387,3 +3388,122 @@ class TestSharedHelpersMissingCoverage:
                         case_type="ibm_labeled", relevant_txn_ids=[], notes="")
         with pytest.raises(RuntimeError, match="cost"):
             validate_phase3_results([result], [case], "langgraph")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 21. Import safety — run_comparison importable without compare dependencies
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestRunComparisonImportSafety:
+    """Regression tests for lazy loading in run_comparison.py.
+
+    These tests guard against regressions where eager imports of optional
+    framework runners (crewai, openai-agents) cause import-time failures when
+    only [dev] dependencies are installed.  They cover the import boundary,
+    the CLI --help path, the actionable error message, the registry spec order,
+    and the full mini-comparison with compare deps installed.
+    """
+
+    def test_run_comparison_module_importable(self):
+        """run_comparison imports cleanly without crewai or openai-agents.
+
+        Subprocess test: starts a fresh interpreter so the import cache is cold
+        and no previously cached module state can mask an eager-import failure.
+        """
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import aml_copilot.phase3_compare.run_comparison; print('OK')"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"run_comparison import failed:\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "OK" in result.stdout
+
+    def test_run_comparison_help_exits_0(self):
+        """run_comparison --help exits 0 without requiring compare dependencies."""
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m",
+             "aml_copilot.phase3_compare.run_comparison", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"--help failed (rc={result.returncode}):\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "eval" in result.stdout.lower()
+
+    def test_runner_spec_order_preserved(self):
+        """_RUNNER_SPECS order is langgraph → crewai → openai_agents.
+
+        Imports only the spec list — no framework runners are loaded.
+        """
+        from aml_copilot.phase3_compare.run_comparison import _RUNNER_SPECS
+        class_names = [spec[1] for spec in _RUNNER_SPECS]
+        assert class_names == ["LangGraphRunner", "CrewAIRunner", "OpenAIAgentsRunner"]
+
+    def test_runner_spec_has_three_entries(self):
+        """_RUNNER_SPECS contains exactly three entries."""
+        from aml_copilot.phase3_compare.run_comparison import _RUNNER_SPECS
+        assert len(_RUNNER_SPECS) == 3
+
+    def test_build_runner_registry_raises_import_error_on_missing_deps(self, monkeypatch):
+        """_build_runner_registry raises ImportError when optional deps are absent."""
+        import importlib
+        from aml_copilot.phase3_compare import run_comparison
+
+        original_import = importlib.import_module
+
+        def fake_import(name: str, *args, **kwargs):
+            if "crewai_runner" in name or "openai_agents_runner" in name:
+                raise ModuleNotFoundError(f"No module named 'crewai'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(importlib, "import_module", fake_import)
+
+        with pytest.raises(ImportError):
+            run_comparison._build_runner_registry()
+
+    def test_build_runner_registry_error_message_is_actionable(self, monkeypatch):
+        """ImportError message contains the exact pip install command."""
+        import importlib
+        from aml_copilot.phase3_compare import run_comparison
+
+        original_import = importlib.import_module
+
+        def fake_import(name: str, *args, **kwargs):
+            if "crewai_runner" in name:
+                raise ModuleNotFoundError("No module named 'crewai'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(importlib, "import_module", fake_import)
+
+        with pytest.raises(ImportError) as exc_info:
+            run_comparison._build_runner_registry()
+
+        msg = str(exc_info.value)
+        assert "pip install" in msg
+        assert "[dev,compare]" in msg
+
+    @pytest.mark.compare
+    def test_runner_registry_order_with_deps_installed(self):
+        """RUNNER_REGISTRY preserves langgraph → crewai → openai_agents when deps installed."""
+        from aml_copilot.phase3_compare.run_comparison import RUNNER_REGISTRY
+        names = [cls.framework_name for cls, _ in RUNNER_REGISTRY]
+        assert names == ["langgraph", "crewai", "openai_agents"]
+
+    @pytest.mark.compare
+    def test_mini_comparison_passes_with_compare_deps(self, tmp_path):
+        """Full mini comparison produces PASS when compare deps are installed."""
+        from aml_copilot.phase3_compare.run_comparison import run
+        from aml_copilot.phase3_compare.testing import MINI_EVAL_PATH, MINI_BASELINE_PATH
+
+        out = tmp_path / "import_safety_mini.json"
+        comparison = run(MINI_EVAL_PATH, MINI_BASELINE_PATH, out)
+        assert comparison.comparison_passed is True
+        assert len(comparison.frameworks) == 3

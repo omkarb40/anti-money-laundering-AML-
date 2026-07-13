@@ -52,10 +52,17 @@ class TestReadmeContent:
             "README does not contain Phase 1 accuracy (75.56%)"
         )
 
-    def test_readme_states_phase4_not_started(self):
+    def test_readme_states_future_llm_work_not_done(self):
         text = _README.read_text()
-        assert "Not started" in text or "not started" in text, (
-            "README does not state that Phase 4 is not started"
+        # README must indicate live LLM integration is future/planned work.
+        assert (
+            "Future Work" in text
+            or "future work" in text
+            or "Not started" in text
+            or "not started" in text
+            or "Planned" in text
+        ), (
+            "README does not indicate that live LLM integration is future/planned work"
         )
 
     def test_readme_does_not_claim_live_llm_in_phases_1_3(self):
@@ -214,9 +221,15 @@ class TestNoStaleReferences:
 
     def test_readme_no_stale_phase_roadmap(self):
         text = _README.read_text()
-        # Phase 2 and 3 should be marked complete; Phase 4/5 not started
-        assert "Phase 4" in text and ("Not started" in text or "Planned" in text), (
-            "README roadmap does not distinguish completed from planned phases"
+        # README must distinguish what is done from what is future/planned.
+        # Accepts either the old phase-table format ("Phase 4" + "Not started"/"Planned")
+        # or the new Future Work section format introduced in the README rewrite.
+        phase_table_format = "Phase 4" in text and (
+            "Not started" in text or "Planned" in text
+        )
+        future_work_format = "Future Work" in text or "future work" in text
+        assert phase_table_format or future_work_format, (
+            "README does not distinguish completed work from future plans"
         )
 
 
